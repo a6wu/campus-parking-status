@@ -1,0 +1,25 @@
+# Secrets — never commit real credentials
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Portable local Python toolchain
+.python/
+.python-embed.zip
+.get-pip.py
+
+# Local server logs
+.server.log
+.server.err.log
+
+# Local portable toolchain (helm, git)
+.tools/
+
+# OS artifacts
+.DS_Store
+Thumbs.db

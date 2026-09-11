@@ -1,0 +1,191 @@
+# Default values for a UCSD citizen-developer web app on DSMLP.
+# Copy this chart into your app repo, rename it, and set the values marked CHANGEME.
+# Deploy-time specifics (replicas, resources, ingress host, storage class) are
+# typically tuned by the TritonAI platform team — sane defaults are fine here.
+
+# -- Number of pod replicas. Platform team may override at deploy time.
+# WARNING: if the app uses SQLite or any single-writer local store, keep this at 1 —
+# multiple replicas will corrupt the database. Only raise it for stateless apps or
+# ones backed by an external DB (set via env/envFrom). When litestream.enabled=true,
+# the chart fails render unless this remains 1.
+replicaCount: 1
+
+# -- Deployment update strategy. Recreate is the safe default for stateful single-
+# writer apps (SQLite): RollingUpdate briefly runs two pods against the same data
+# and corrupts it. Switch to RollingUpdate for stateless apps if you want zero-
+# downtime deploys. When litestream.enabled=true, the chart fails render unless this
+# remains Recreate.
+strategy:
+  type: RollingUpdate
+
+image:
+  # Must match the GitHub repository owner/name that Actions pushes to.
+  repository: ghcr.io/a6wu/campus-parking-status
+  # -- Image tag. Pin a digest or tag at deploy time; latest is for dev only.
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# -- Pull secrets for private registries (created outside Helm, referenced by name).
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Environment variables reach the container three ways. Use the right one:
+#
+#   env       — plain, non-secret values. Empty strings are omitted; false and 0 are kept.
+#   envFrom   — bulk-inject ALL keys of a pre-existing Secret/ConfigMap.
+#   extraEnv  — individual vars via valueFrom: secretKeyRef, configMapKeyRef,
+#               or Downward API fieldRef.
+#
+# Secrets are ALWAYS installed outside Helm (Sealed Secrets / ESO / kubectl) and
+# referenced by name only — never put secret values in this file.
+
+# -- Plain (non-secret) environment variables. EVERY non-secret var the app reads
+# belongs here. Empty-string values are skipped; boolean false and numeric zero are emitted.
+env:
+  API_URL: "https://api-qa.ucsd.edu:8243/campusparkingservice/v1.3/status"
+  TOKEN_URL: "https://api-qa.ucsd.edu/oauth2/token"
+
+# -- Bulk-inject all keys from pre-existing Secret/ConfigMap objects.
+envFrom: []
+#  - secretRef:
+#      name: my-app-secrets
+#  - configMapRef:
+#      name: my-app-extra-config
+
+# -- Individual env vars using full Kubernetes valueFrom syntax: secretKeyRef,
+# configMapKeyRef, or Downward API fieldRef. Appended after `env`.
+extraEnv:
+  - name: CONSUMER_KEY
+    valueFrom:
+      secretKeyRef:
+        name: campus-parking-status-oauth
+        key: CONSUMER_KEY
+  - name: CONSUMER_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: campus-parking-status-oauth
+        key: CONSUMER_SECRET
+
+service:
+  type: ClusterIP
+  port: 80
+  # -- Container port; the template stack (FastAPI/uvicorn) serves on 8000.
+  targetPort: 8000
+
+ingress:
+  enabled: true
+  className: ""
+  # -- Cert/issuer annotations are set by the platform team at deploy time.
+  annotations: {}
+  # Requested hostname; the final hostname is assigned by the platform team.
+  host: campus-parking-status.ucsd.edu
+  path: /
+  pathType: Prefix
+  # -- TLS secret name (cert installed outside Helm by the platform team).
+  tls:
+    enabled: true
+    secretName: ""
+
+# -- Litestream replication. ENABLE THIS for any app that stores data in SQLite
+# on networked (NFS) storage — SQLite WAL mode is unsafe on NFS and will corrupt.
+# With litestream.enabled=true the live database lives on a node-local emptyDir at
+# /data, and the PVC (which may then safely be NFS) becomes a Litestream file-replica
+# target mounted at /replica:
+#   - an init container restores the latest replica snapshot into /data before the
+#     app starts (no-op on first install; a failed restore blocks startup rather
+#     than starting on an empty database);
+#   - a native sidecar (init container with restartPolicy: Always) continuously
+#     replicates WAL frames to /replica and is terminated only after the app exits,
+#     so the final frames always land.
+# Loss window on unclean node death is ~syncInterval; zero on graceful shutdown.
+# Requires Kubernetes >= 1.29 (native sidecars), persistence.enabled=true, and
+# strategy: Recreate (two live Litestream instances corrupt the replica).
+litestream:
+  enabled: false
+  # -- Litestream image. Pin a tag; config below targets the 0.5.x series.
+  image: litestream/litestream:0.5.4
+  # -- Path of the live SQLite database. MUST match the app's DATABASE_URL path.
+  dbPath: /data/app.db
+  # -- Replica directory on the PVC (mounted at /replica).
+  replicaPath: /replica/app
+  # -- How often WAL frames are pushed (= max data-loss window on unclean shutdown).
+  syncInterval: 1s
+  # -- Interval between full snapshots.
+  snapshotInterval: 1h
+  # -- How long old snapshots/WAL segments are retained.
+  retention: 72h
+  metrics:
+    enabled: false
+    port: 9090
+  # -- Resources for both Litestream containers.
+  resources: {}
+
+# -- Optional PVC for the app's data directory. Off by default; enable if the
+# app persists data. When litestream.enabled=true this PVC is the replica target
+# (mounted at /replica) instead of the live data directory. Independent of
+# extraVolumes/extraVolumeMounts below.
+persistence:
+  enabled: false
+  # -- Provide storage through a chart-managed/existing PVC. Set false to supply
+  # the volume yourself via extraVolumes (e.g. an inline nfs: volume) — name it
+  # "replica" when litestream.enabled=true, otherwise "data". The chart fails
+  # render if that required extra volume is missing.
+  usePvc: true
+  # -- Where the data directory is mounted (ignored when litestream.enabled=true,
+  # which fixes the app mount at /data).
+  mountPath: /data
+  size: 1Gi
+  # -- Leave empty for the cluster default storage class.
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  annotations: {}
+  # -- Use an existing PVC instead of creating one (platform team may pre-create).
+  existingClaim: ""
+
+# -- Arbitrary additional volumes, verbatim Kubernetes volume definitions.
+# Separate from the PVC above.
+extraVolumes: []
+#  - name: ocr-models
+#    emptyDir: {}
+
+# -- Arbitrary additional volumeMounts for the app container, verbatim.
+extraVolumeMounts: []
+#  - name: ocr-models
+#    mountPath: /models
+
+# -- Health endpoint; the template stack serves /api/health.
+probes:
+  path: /api/health
+  liveness:
+    initialDelaySeconds: 20
+    periodSeconds: 30
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+# -- Matches the template image's non-root user (appuser, UID 1000).
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+
+# -- Resource requests/limits; platform team tunes per app at deploy time.
+resources: {}
+#  requests:
+#    cpu: 100m
+#    memory: 256Mi
+#  limits:
+#    memory: 512Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -1,0 +1,22 @@
+{{- if .Values.litestream.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ucsd-webapp.fullname" . }}-litestream
+  labels:
+    {{- include "ucsd-webapp.labels" . | nindent 4 }}
+data:
+  litestream.yml: |
+    {{- if .Values.litestream.metrics.enabled }}
+    addr: ":{{ .Values.litestream.metrics.port }}"
+    {{- end }}
+    snapshot:
+      interval: {{ .Values.litestream.snapshotInterval }}
+      retention: {{ .Values.litestream.retention }}
+    dbs:
+      - path: {{ .Values.litestream.dbPath }}
+        replica:
+          type: file
+          path: {{ .Values.litestream.replicaPath }}
+          sync-interval: {{ .Values.litestream.syncInterval }}
+{{- end }}

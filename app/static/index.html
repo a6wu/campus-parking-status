@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Live UCSD campus parking availability dashboard">
+  <title>Campus Parking Status · UC San Diego</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230b66c3'/%3E%3Ctext x='50' y='70' font-size='62' font-family='Arial' font-weight='bold' text-anchor='middle' fill='white'%3EP%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">P</div>
+      <div class="brand-text">
+        <h1>Campus Parking Status</h1>
+        <p>UC San Diego · live structure availability</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span class="live-badge" id="liveBadge" title="Auto-refresh status">
+        <span class="live-dot" id="liveDot" aria-hidden="true"></span>
+        <span id="liveText">Connecting…</span>
+      </span>
+      <span class="last-updated" id="lastUpdated">Waiting for data…</span>
+      <button class="button" id="refreshButton" type="button">Refresh now</button>
+      <button class="button ghost" id="rawToggle" type="button" aria-expanded="false" aria-controls="rawSection">Raw JSON</button>
+    </div>
+  </header>
+
+  <div class="error-banner" id="errorBanner" role="alert" hidden>
+    <strong>Couldn't load parking data.</strong>
+    <span id="errorMessage">Unknown error.</span>
+    <button class="button small" id="retryButton" type="button">Retry</button>
+  </div>
+
+  <section class="summary" aria-label="Campus-wide summary">
+    <article class="stat-card">
+      <span class="stat-value" id="statStructures">–</span>
+      <span class="stat-label">Structures reporting</span>
+    </article>
+    <article class="stat-card">
+      <span class="stat-value" id="statOpen">–</span>
+      <span class="stat-label">Open spaces</span>
+    </article>
+    <article class="stat-card">
+      <span class="stat-value" id="statTotal">–</span>
+      <span class="stat-label">Total spaces</span>
+    </article>
+    <article class="stat-card ring-card">
+      <svg class="ring" viewBox="0 0 64 64" aria-hidden="true">
+        <circle class="ring-track" cx="32" cy="32" r="26"></circle>
+        <circle class="ring-value" id="ringValue" cx="32" cy="32" r="26"></circle>
+      </svg>
+      <div class="ring-text">
+        <span class="stat-value" id="statPercent">–%</span>
+        <span class="stat-label">Campus availability</span>
+      </div>
+    </article>
+  </section>
+
+  <section class="controls" aria-label="Filters and sorting">
+    <input class="search" id="searchInput" type="search" placeholder="Search structures or neighborhoods…" aria-label="Search structures or neighborhoods">
+    <div class="chips" id="neighborhoodChips" role="group" aria-label="Filter by neighborhood"></div>
+    <label class="sort-label">
+      Sort
+      <select class="select" id="sortSelect" aria-label="Sort structures">
+        <option value="availability">Most available %</option>
+        <option value="open">Most open spaces</option>
+        <option value="name">Name (A–Z)</option>
+      </select>
+    </label>
+  </section>
+
+  <main class="grid" id="grid" aria-live="polite"></main>
+  <div class="empty-state" id="emptyState" hidden>No parking structures match your filters.</div>
+
+  <section class="raw-section" id="rawSection" hidden>
+    <h2>Raw JSON response</h2>
+    <p class="raw-hint">Exactly what the backend returned from <code>/api/parking/status</code>.</p>
+    <pre class="raw-json"><code id="rawJson"></code></pre>
+  </section>
+
+  <footer class="footer">
+    <p>Auto-refreshes every 30 seconds · Data: UCSD Campus Parking Service v1.3</p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

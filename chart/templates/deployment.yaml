@@ -1,0 +1,198 @@
+{{- if and .Values.litestream.enabled (not .Values.persistence.enabled) }}
+{{- fail "litestream.enabled requires persistence.enabled (the durable PVC is the replica target; set persistence.usePvc=false to supply the \"replica\" volume via extraVolumes instead of a PVC)" }}
+{{- end }}
+{{- if and .Values.litestream.enabled (ne (int .Values.replicaCount) 1) }}
+{{- fail "litestream.enabled requires replicaCount=1; multiple Litestream pods can corrupt the shared replica" }}
+{{- end }}
+{{- if and .Values.litestream.enabled (ne (default "" .Values.strategy.type) "Recreate") }}
+{{- fail "litestream.enabled requires strategy.type=Recreate; RollingUpdate can run concurrent SQLite/Litestream pods" }}
+{{- end }}
+{{- if and .Values.persistence.enabled (not .Values.persistence.usePvc) }}
+{{- $requiredVolumeName := "data" }}
+{{- if .Values.litestream.enabled }}
+{{- $requiredVolumeName = "replica" }}
+{{- end }}
+{{- $hasRequiredVolume := false }}
+{{- range .Values.extraVolumes }}
+{{- if eq .name $requiredVolumeName }}
+{{- $hasRequiredVolume = true }}
+{{- end }}
+{{- end }}
+{{- if not $hasRequiredVolume }}
+{{- fail (printf "persistence.usePvc=false requires extraVolumes entry named %q" $requiredVolumeName) }}
+{{- end }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ucsd-webapp.fullname" . }}
+  labels:
+    {{- include "ucsd-webapp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  {{- with .Values.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ucsd-webapp.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ucsd-webapp.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.litestream.enabled }}
+      initContainers:
+        # Restores the latest replica snapshot into the empty /data volume before
+        # the app starts. No-op when the database already exists (container
+        # restart) or no replica exists yet (first install). A failed restore
+        # fails the pod rather than starting on an empty database.
+        - name: litestream-restore
+          image: {{ .Values.litestream.image }}
+          args:
+            - restore
+            - -if-db-not-exists
+            - -if-replica-exists
+            - {{ .Values.litestream.dbPath }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- with .Values.litestream.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: replica
+              mountPath: /replica
+            - name: litestream-config
+              mountPath: /etc/litestream.yml
+              subPath: litestream.yml
+        # Native sidecar (restartPolicy: Always on an init container): starts before
+        # the app container and receives SIGTERM only after the app exits, so the
+        # final WAL frames are always replicated on shutdown.
+        - name: litestream-replicate
+          image: {{ .Values.litestream.image }}
+          args:
+            - replicate
+          restartPolicy: Always
+          {{- if .Values.litestream.metrics.enabled }}
+          ports:
+            - name: ls-metrics
+              containerPort: {{ .Values.litestream.metrics.port }}
+              protocol: TCP
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- with .Values.litestream.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: replica
+              mountPath: /replica
+            - name: litestream-config
+              mountPath: /etc/litestream.yml
+              subPath: litestream.yml
+      {{- end }}
+      containers:
+        - name: {{ include "ucsd-webapp.name" . }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          {{- if or .Values.env .Values.extraEnv }}
+          env:
+            {{- range $name, $value := .Values.env }}
+            {{- if and (ne $value nil) (ne (toString $value) "") }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          {{- with .Values.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or .Values.persistence.enabled .Values.litestream.enabled .Values.extraVolumeMounts }}
+          volumeMounts:
+            {{- if .Values.litestream.enabled }}
+            # App always writes to the node-local live DB; replication is the sidecar's job.
+            - name: data
+              mountPath: /data
+            {{- else if .Values.persistence.enabled }}
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+      {{- if or .Values.persistence.enabled .Values.litestream.enabled .Values.extraVolumes }}
+      volumes:
+        {{- if .Values.litestream.enabled }}
+        # Live SQLite database on node-local disk (WAL is unsafe on NFS); durability
+        # across pod rescheduling comes from the Litestream replica on the PVC.
+        - name: data
+          emptyDir: {}
+        {{- if .Values.persistence.usePvc }}
+        - name: replica
+          persistentVolumeClaim:
+            claimName: {{ include "ucsd-webapp.pvcName" . }}
+        {{- end }}
+        - name: litestream-config
+          configMap:
+            name: {{ include "ucsd-webapp.fullname" . }}-litestream
+        {{- else if and .Values.persistence.enabled .Values.persistence.usePvc }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "ucsd-webapp.pvcName" . }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

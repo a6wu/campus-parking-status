@@ -1,0 +1,10 @@
+apiVersion: v2
+name: campus-parking-status
+description: >-
+  Helm chart for deploying the UCSD Campus Parking Status dashboard onto the
+  TritonAI DSMLP Kubernetes platform. Deployment + Service + Ingress; the app
+  is stateless, so PVC and Litestream are disabled. OAuth credentials are
+  referenced — never created — from an externally managed Secret.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

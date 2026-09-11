@@ -1,0 +1,12 @@
+.env
+.python/
+.python-embed.zip
+.get-pip.py
+.git
+.github
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+tests
