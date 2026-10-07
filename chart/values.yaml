@@ -44,8 +44,8 @@ fullnameOverride: ""
 # -- Plain (non-secret) environment variables. EVERY non-secret var the app reads
 # belongs here. Empty-string values are skipped; boolean false and numeric zero are emitted.
 env:
-  API_URL: "https://api-qa.ucsd.edu:8243/campusparkingservice/v1.3/status"
-  TOKEN_URL: "https://api-qa.ucsd.edu/oauth2/token"
+  API_URL: "https://api.ucsd.edu:8243/campusparkingservice/v1.3/status"
+  TOKEN_URL: "https://api.ucsd.edu/oauth2/token"
 
 # -- Bulk-inject all keys from pre-existing Secret/ConfigMap objects.
 envFrom: []
