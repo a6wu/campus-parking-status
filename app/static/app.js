@@ -328,7 +328,11 @@ async function fetchStatus() {
     renderAll();
   } catch (error) {
     console.error("Failed to load parking data:", error);
-    state.error = error.message || "Unknown error.";
+    const err = error && typeof error === "object" ? error : null;
+    state.error =
+      (err && err.message) ||
+      (err && err.name) ||
+      String(error || "Unknown error.");
     renderError();
   } finally {
     state.loading = false;
