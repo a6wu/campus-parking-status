@@ -20,8 +20,8 @@ inferable from the repo; this file saves the archaeology.
 
 | Env var | Purpose | Example (non-secret) | Secret? |
 |---|---|---|---|
-| `API_URL` | Upstream parking status endpoint | `https://api-qa.ucsd.edu:8243/campusparkingservice/v1.3/status` | no |
-| `TOKEN_URL` | OAuth token endpoint | `https://api-qa.ucsd.edu/oauth2/token` | no |
+| `API_URL` | Upstream parking status endpoint | `https://api.ucsd.edu:8243/campusparkingservice/v1.3/status` | no |
+| `TOKEN_URL` | OAuth token endpoint | `https://api.ucsd.edu/oauth2/token` | no |
 | `CONSUMER_KEY` | OAuth client id for the parking API | — | **yes — install as Secret** |
 | `CONSUMER_SECRET` | OAuth client secret for the parking API | — | **yes — install as Secret** |
 
@@ -34,6 +34,21 @@ The backend obtains OAuth tokens via the client-credentials grant, caches them
 in memory, refreshes 60s before expiry, and force-refreshes on upstream 401.
 Credentials never reach the browser; the SPA only calls same-origin
 `/api/parking/status`.
+
+**Note on QA vs production endpoints:** the defaults above point at the
+production API host (`api.ucsd.edu`). For local development you may instead use
+the QA endpoints (`https://api-qa.ucsd.edu:8243/campusparkingservice/v1.3/status`
+and `https://api-qa.ucsd.edu/oauth2/token`) with QA credentials kept in the
+gitignored `.env` file — QA credentials are rejected by the production token
+endpoint, so the two must match.
+
+**Note on post-deploy verification:** the production parking API currently
+returns HTTP 502 (`Internal server error`) due to a known UCSD-side upstream
+outage, so a clean "Parking API returned HTTP 502" right after deploying to prod
+is expected and does not indicate a bad deploy. A 401/403 or an "OAuth error"
+detail, however, points to a configuration problem — e.g., wrong credentials in
+the `campus-parking-status-oauth` Secret — and should be fixed before treating
+the deployment as healthy.
 
 ## Ride-along services
 
