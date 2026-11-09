@@ -59,6 +59,11 @@
     </article>
   </section>
 
+  <section class="permit-section" aria-label="Campus-wide permit type totals">
+    <h2>Permit type totals</h2>
+    <ul class="permit-list" id="permitTotals" hidden></ul>
+  </section>
+
   <section class="controls" aria-label="Filters and sorting">
     <input class="search" id="searchInput" type="search" placeholder="Search structures or neighborhoods…" aria-label="Search structures or neighborhoods">
     <div class="chips" id="neighborhoodChips" role="group" aria-label="Filter by neighborhood"></div>
@@ -85,6 +90,6 @@
     <p>Auto-refreshes every 30 seconds · Data: UCSD Campus Parking Service v1.3</p>
   </footer>
 
-  <script src="/static/app.js"></script>
+  <script type="module" src="/static/app.js"></script>
 </body>
 </html>

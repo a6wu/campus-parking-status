@@ -1,5 +1,7 @@
 "use strict";
 
+import { aggregatePermitTypes } from "./permit-totals.js";
+
 const REFRESH_INTERVAL_MS = 30000;
 const RING_RADIUS = 26;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
@@ -61,6 +63,7 @@ const elements = {
   statTotal: document.getElementById("statTotal"),
   statPercent: document.getElementById("statPercent"),
   ringValue: document.getElementById("ringValue"),
+  permitTotals: document.getElementById("permitTotals"),
 };
 
 function escapeHtml(value) {
@@ -218,6 +221,20 @@ function renderChips() {
   ].join("");
 }
 
+function renderPermitTotals() {
+  const totals = aggregatePermitTypes(state.data);
+  elements.permitTotals.hidden = totals.length === 0;
+  elements.permitTotals.innerHTML = totals.map(({ type, open, total }) => {
+    const pct = total > 0 ? open / total : 0;
+    return `
+      <li class="permit-row">
+        ${typeBadge(type)}
+        ${barHtml(pct, availabilityLevel(pct), open, total, false)}
+        <span class="type-count"><strong>${formatNumber(open)}</strong> / ${formatNumber(total)}</span>
+      </li>`;
+  }).join("");
+}
+
 function renderGrid() {
   const filtered = getFiltered();
   elements.grid.innerHTML = filtered.map(cardHtml).join("");
@@ -252,6 +269,7 @@ function highlightJson(json) {
 
 function renderAll() {
   renderSummary();
+  renderPermitTotals();
   renderChips();
   renderGrid();
   renderRaw();
