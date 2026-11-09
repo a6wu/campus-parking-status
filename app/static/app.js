@@ -1,6 +1,6 @@
 "use strict";
 
-import { aggregatePermitTypes } from "./permit-totals.js";
+import { aggregatePermitTypes } from "./permit-totals.js?v=2365489";
 
 const REFRESH_INTERVAL_MS = 30000;
 const RING_RADIUS = 26;
